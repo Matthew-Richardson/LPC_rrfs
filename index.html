@@ -7,9 +7,10 @@
   <title>La Plata County · RRFS Forecast</title>
   <link rel="icon" href="assets/favicon.ico">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=3">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
-  <script src="app.js?v=2" defer></script>
+  <script src="basin-math.js?v=1" defer></script>
+  <script src="app.js?v=3" defer></script>
 </head>
 <body>
   <header class="masthead">
@@ -33,6 +34,14 @@
         <label class="opacity-label" for="opacity">Map opacity <output id="opacityValue">75%</output></label><input id="opacity" type="range" min="10" max="100" value="75">
       </section>
       <section class="map-layers"><h2>Map reference</h2><label><input type="checkbox" id="countyOutline" checked><span class="swatch boundary"></span> La Plata County outline</label><label><input type="checkbox" id="terrain" checked><span class="swatch terrain"></span> Topographic basemap</label><p class="fine">Click the map to read the nearest model cell. Use County or Region to change the view.</p><p class="fine">Long-range runs update four times daily. This viewer checks for new data every five minutes.</p></section>
+      <section class="basin-panel"><h2>Drainage averages</h2>
+      <label><input id="basinOutlines" type="checkbox" checked> Watershed outlines</label>
+      <label><input id="basinLabels" type="checkbox" checked> Averages on map</label>
+      <label for="basinPeriod">Average period</label><select id="basinPeriod"><option value="layer">Match forecast layer</option><option value="run">Since initialization</option><option value="3hr">Selected 3 hours</option></select>
+      <p id="basinStatus" class="fine" role="status">Loading watershed boundaries…</p>
+      <table class="basin-table"><thead><tr><th>Drainage</th><th>Precip.</th><th>Rain*</th></tr></thead><tbody id="basinRows"></tbody></table>
+      <p class="fine">Area averages in inches. *Estimated rain with snow removed. Local detail is limited by the native 3 km model cells. Dashed outlines mark terrain-derived approximations. Click a watershed label for its source and extent.</p>
+      </section>
       <footer class="sidebar-footer"><strong>Forecast guidance, not a warning.</strong><p>Follow official instructions and <a href="https://www.weather.gov/gjt/" target="_blank" rel="noopener">NWS Grand Junction</a>. Forecast cells represent approximately 3 km, not individual properties.</p><a href="https://github.com/Matthew-Richardson/LPC_rrfs" target="_blank" rel="noopener">Data sources & project ↗</a></footer>
     </aside>
     <section class="workspace" aria-label="Forecast map and timeline">

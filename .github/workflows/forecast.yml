@@ -30,6 +30,11 @@ jobs:
         run: python -m pip install -r requirements.txt
       - name: Verify data processing
         run: python -m unittest discover -s tests -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify watershed averages
+        run: node --test tests/basin-math.test.cjs
       - name: Restore last complete forecast
         uses: actions/cache/restore@v4
         with:
@@ -46,7 +51,7 @@ jobs:
       - name: Assemble static website
         run: |
           mkdir -p _site
-          cp index.html styles.css app.js _site/
+          cp index.html styles.css app.js basin-math.js _site/
           cp -r assets data _site/
           touch _site/.nojekyll
       - uses: actions/upload-artifact@v4

@@ -1,4 +1,4 @@
-/* global L */
+/* global L, BasinMath */
 'use strict';
 const $ = id => document.getElementById(id);
 const escapeHTML = text => String(text ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -72,6 +72,7 @@ async function showFrame(){
     $('hour').value=state.index;$('validTime').textContent=formatTime(frame.valid);
     $('period').textContent=['qpf3','rain3'].includes(product)?`3 hours: ${formatTime(frame.intervalStart,true)} → ${formatTime(frame.valid,true)}`:product==='temp'?'Instantaneous model forecast':`Accumulation since ${formatTime(manifest.initialized,true)}`;
     $('forecastHour').textContent=`F${hour} · ${manifest.products[product].label}`;updateLegend();notice('');
+    await refreshBasinAverages();
     const next=manifest.frames[(state.index+1)%manifest.frames.length], preload=new Image();preload.src=assetPath(`${product}-${String(next.hour).padStart(3,'0')}.png`,manifest);
   }catch(error){if(requestId===state.renderId)notice('This forecast frame could not load. Try Refresh.');console.error(error);throw error;}
   finally{if(requestId===state.renderId)state.busy=false;}
@@ -108,8 +109,8 @@ async function saveMap(){
     ctx.fillStyle='#173f40';ctx.font='bold 23px Arial';ctx.fillText('LA PLATA COUNTY · '+shown.manifest.products[shown.product].label,20,33);
     ctx.font='14px Arial';ctx.fillText(`RRFS 3 km | Init ${formatTime(shown.manifest.initialized)} | Valid ${formatTime(shown.frame.valid)}`,20,60);
     ctx.save();ctx.beginPath();ctx.rect(0,82,canvas.width,box.height*ratio);ctx.clip();ctx.fillStyle='#e4e9dd';ctx.fillRect(0,82,canvas.width,box.height*ratio);
-    for(const paneName of ['tilePane','forecast','outline']){
-      const pane=map.getPane(paneName);
+    for(const paneName of ['tilePane','forecast','watersheds','outline']){
+      const pane=map.getPane(paneName);if(!pane)continue;
       for(const el of pane.querySelectorAll('img,canvas')){
         if(el.tagName==='IMG'&&(!el.complete||!el.naturalWidth))continue;
         const r=el.getBoundingClientRect();if(!r.width||!r.height)continue;
@@ -117,11 +118,21 @@ async function saveMap(){
         ctx.drawImage(el,(r.left-box.left)*ratio,82+(r.top-box.top)*ratio,r.width*ratio,r.height*ratio);
       }
     }
+    if($('basinLabels').checked){
+      ctx.globalAlpha=1;
+      for(const entry of basins.entries){
+        if(!entry.values)continue;
+        const p=map.latLngToContainerPoint(entry.marker.getLatLng()),x=(p.x-58)*ratio,y=82+(p.y-20)*ratio;
+        ctx.fillStyle='#fffffff2';ctx.fillRect(x,y,116*ratio,40*ratio);ctx.strokeStyle='#334e46';ctx.strokeRect(x,y,116*ratio,40*ratio);
+        ctx.fillStyle='#173f40';ctx.font=`bold ${10*ratio}px Arial`;ctx.textAlign='center';ctx.fillText(entry.feature.properties.shortName||entry.feature.properties.name,p.x*ratio,y+14*ratio);
+        ctx.font=`${9*ratio}px Arial`;ctx.fillText(`P ${meanText(entry.values.precip)} / R* ${meanText(entry.values.rain)} in`,p.x*ratio,y+29*ratio);ctx.textAlign='left';
+      }
+    }
     ctx.restore();ctx.globalAlpha=1;
     const y=82+box.height*ratio,spec=shown.manifest.products[shown.product], binWidth=Math.min(55,(canvas.width-40)/spec.colors.length);
     spec.colors.forEach((color,i)=>{ctx.fillStyle=color;ctx.fillRect(20+i*binWidth,y+9,binWidth,12);ctx.fillStyle='#173f40';ctx.font='12px Arial';ctx.fillText(String(spec.levels[i]),20+i*binWidth,y+36);});
     ctx.font='13px Arial';ctx.fillText(spec.unit+' · '+(shown.product==='temp'?'2 m temperature':['qpf3','rain3'].includes(shown.product)?'Previous 3 hours':'Since model initialization'),20,y+57);
-    ctx.font='11px Arial';ctx.fillText('NOAA public model guidance, not a warning. Basemap: Esri, USGS and contributors. County boundary: La Plata County GIS.',20,y+77);
+    ctx.font='11px Arial';ctx.fillText('NOAA guidance. P: precip; R*: estimated snow-removed rain. Basin period: '+(basins.period||'none')+'. Basemap: Esri, USGS; county: LPC GIS.',20,y+77);
     const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));if(!blob)throw new Error('PNG export failed');
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`LPC_RRFS_${shown.manifest.cycle}_${shown.product}_f${String(shown.frame.hour).padStart(3,'0')}.png`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
   }catch(error){notice('Map export failed. You can still capture the displayed map.');console.error(error);}
@@ -143,6 +154,7 @@ async function startMap(){
   $('region').onclick=()=>map.fitBounds([[36.70,-108.65],[38.30,-106.80]],{padding:[10,10]});
   map.on('click',event=>pointForecast(event.latlng));
   new ResizeObserver(()=>map.invalidateSize()).observe($('map'));
+  await initBasins();
   await loadForecast();
   setInterval(()=>{if(!document.hidden&&!state.playing)loadForecast();},300000);setInterval(refreshAge,60000);
 }
@@ -157,4 +169,95 @@ $('previous').onclick=()=>{stopPlayback();move(-1);};$('next').onclick=()=>{stop
 $('play').onclick=()=>{if(state.playing){stopPlayback();return;}state.playing=true;$('play').textContent='Ⅱ';$('play').setAttribute('aria-label','Pause forecast animation');state.timer=setTimeout(animate,0);};
 $('refresh').onclick=()=>{stopPlayback();loadForecast();};$('download').onclick=saveMap;
 document.addEventListener('visibilitychange',()=>{if(document.hidden)stopPlayback();});
+
+
+// Static watershed polygons and area fractions; no live GIS service is needed.
+const basins={features:null,weights:null,outlines:null,labels:null,connectors:null,entries:[],period:null};
+async function initBasins(){
+  try{
+    const [geo,weights]=await Promise.all([readJSON('assets/watersheds.geojson'),readJSON('assets/watershed-weights.json')]);
+    basins.features=geo;basins.weights=weights;
+    map.createPane('watersheds');map.getPane('watersheds').style.zIndex=410;
+    basins.outlines=L.geoJSON(geo,{pane:'watersheds',interactive:false,style:f=>({color:'#465955',weight:1.5,opacity:.9,fill:false,dashArray:f.properties.approximate?'4 4':null})}).addTo(map);
+    basins.labels=L.layerGroup().addTo(map);basins.connectors=L.layerGroup().addTo(map);
+    for(const feature of geo.features){
+      const p=feature.properties,weight=weights.basins.find(b=>b.id===p.id);if(!weight)throw new Error('Missing basin weights');
+      const anchor=weight.anchor;
+      const marker=L.marker(anchor,{icon:L.divIcon({className:'basin-marker',html:'',iconSize:[116,40],iconAnchor:[58,20]}),keyboard:true,title:p.name,bubblingMouseEvents:false}).addTo(basins.labels);
+      const connector=L.polyline([anchor,anchor],{pane:'watersheds',color:'#354d46',weight:1.3,opacity:.8,interactive:false}).addTo(basins.connectors);
+      const entry={feature,weight,marker,connector,anchor,values:null};basins.entries.push(entry);
+      marker.on('click',()=>basinPopup(entry));
+    }
+    $('basinOutlines').onchange=()=>{$('basinOutlines').checked?basins.outlines.addTo(map):basins.outlines.remove();};
+    $('basinLabels').onchange=()=>{for(const l of [basins.labels,basins.connectors])$('basinLabels').checked?l.addTo(map):l.remove();};
+    $('basinPeriod').onchange=()=>refreshBasinAverages();map.on('moveend resize',layoutBasinLabels);layoutBasinLabels();
+  }catch(error){$('basinStatus').textContent='Watersheds could not load. Forecast map remains available.';console.error(error);}
+}
+function layoutBasinLabels(){
+  if(!basins.entries.length)return;
+  const size=map.getSize(),width=116,height=40;
+  const used=[{x:0,y:size.y-126,w:345,h:126},{x:48,y:0,w:285,h:115}];
+  const overlaps=(a,b)=>a.x<b.x+b.w+5&&a.x+a.w+5>b.x&&a.y<b.y+b.h+5&&a.y+a.h+5>b.y;
+  const entries=[...basins.entries].sort((a,b)=>a.anchor[0]-b.anchor[0]);
+  for(const entry of entries){
+    const origin=map.latLngToContainerPoint(entry.anchor);
+    if(origin.x<0||origin.x>size.x||origin.y<0||origin.y>size.y){entry.marker.setLatLng(entry.anchor);entry.connector.setLatLngs([]);continue;}
+    let target=origin,chosen=null;
+    for(const radius of [0,45,80,120,165]){
+      const angles=radius?[0,Math.PI,Math.PI/2,-Math.PI/2,.75*Math.PI,-.75*Math.PI,.25*Math.PI,-.25*Math.PI]:[0];
+      for(const angle of angles){
+        const x=Math.max(width/2+7,Math.min(size.x-width/2-7,origin.x+Math.cos(angle)*radius));
+        const y=Math.max(height/2+7,Math.min(size.y-height/2-7,origin.y+Math.sin(angle)*radius));
+        const rect={x:x-width/2,y:y-height/2,w:width,h:height};
+        if(!used.some(r=>overlaps(rect,r))){target=L.point(x,y);chosen=rect;break;}
+      }
+      if(chosen)break;
+    }
+    if(chosen)used.push(chosen);
+    const dest=map.containerPointToLatLng(target);entry.marker.setLatLng(dest);entry.connector.setLatLngs(origin.distanceTo(target)>12?[entry.anchor,dest]:[]);
+  }
+}
+function meanText(value){return value===null?'—':value.toFixed(2);}
+function basinPopup(entry){
+  const p=entry.feature.properties,v=entry.values;
+  const text=`<strong>${escapeHTML(p.name)}</strong><p>${v?`${meanText(v.precip)} in total precipitation / ${meanText(v.rain)} in estimated rain`: 'Averages unavailable'}</p><p>${escapeHTML(basins.period||'')} · ${escapeHTML(state.displayed?formatTime(state.displayed.frame.valid):'')}</p><p class="basin-note">${escapeHTML(p.extent)}</p><p class="basin-note">${entry.weight.areaKm2.toFixed(1)} km². ${escapeHTML(p.source)}${p.approximate?' Terrain-derived approximation.':''}</p><p class="basin-note">Area averages of the mapped approximately 3 km RRFS grid. Rain is estimated with snow removed; freezing rain or mixed precipitation may remain.</p>`;
+  L.popup({maxWidth:330}).setLatLng(entry.anchor).setContent(text).openOn(map);
+}
+async function refreshBasinAverages(){
+  const shown=state.displayed;if(!shown||!basins.weights)return;
+  const gridSpec=basins.weights.grid,actual=shown.manifest.grid;
+  if(gridSpec.width!==actual.width||gridSpec.height!==actual.height||JSON.stringify(gridSpec.bounds)!==JSON.stringify(actual.bounds)){
+    $('basinStatus').textContent='Forecast grid changed. Watershed averages unavailable until weights are rebuilt.';
+    for(const entry of basins.entries){entry.values=null;setBasinLabel(entry);}return;
+  }
+  const selected=$('basinPeriod').value;
+  const interval=selected==='3hr'||selected==='layer'&&['qpf3','rain3'].includes(shown.product);
+  basins.period=interval?'Selected 3 hours':'Since initialization';
+  for(const entry of basins.entries){entry.values=null;setBasinLabel(entry);}
+  $('basinStatus').textContent='Updating drainage averages…';
+  try{
+    const grid=await getFrameGrid(shown.manifest,shown.frame);
+    if(state.displayed!==shown||selected!==$('basinPeriod').value)return;
+    for(const entry of basins.entries){
+      entry.values={precip:BasinMath.mean(grid[interval?'qpf3':'qpf'],entry.weight.samples),rain:BasinMath.mean(grid[interval?'rain3':'rain'],entry.weight.samples)};
+      setBasinLabel(entry);
+    }
+    $('basinStatus').textContent=`${basins.period} · inches · ${formatTime(shown.frame.valid,true)}`;
+    $('basinRows').replaceChildren(...basins.entries.map(entry=>{
+      const tr=document.createElement('tr'),name=document.createElement('td'),precip=document.createElement('td'),rain=document.createElement('td'),button=document.createElement('button');
+      button.textContent=entry.feature.properties.name;button.onclick=()=>{map.fitBounds(L.geoJSON(entry.feature).getBounds(),{padding:[35,35],maxZoom:12});basinPopup(entry);};
+      name.append(button);precip.textContent=meanText(entry.values.precip);rain.textContent=meanText(entry.values.rain);tr.append(name,precip,rain);return tr;
+    }));
+  }catch(error){$('basinStatus').textContent='Drainage averages unavailable for this frame.';console.error(error);}
+}
+function setBasinLabel(entry){
+  const v=entry.values,p=entry.feature.properties;
+  entry.marker.setIcon(L.divIcon({className:'basin-marker',iconSize:[116,40],iconAnchor:[58,20],html:`<div class="basin-number-label"><strong>${escapeHTML(p.shortName||p.name)}${p.approximate?'*':''}</strong><span>P ${v?meanText(v.precip):'—'} / R* ${v?meanText(v.rain):'—'} in</span></div>`}));
+}
+async function getFrameGrid(manifest,frame){
+  const key=`${manifest.cycle}-${frame.hour}`;let grid=state.grids.get(key);
+  if(!grid){grid=await readJSON(assetPath(`grid-${String(frame.hour).padStart(3,'0')}.json`,manifest));state.grids.set(key,grid);if(state.grids.size>6)state.grids.delete(state.grids.keys().next().value);}
+  return grid;
+}
+
 startMap().catch(error=>{notice('Map initialization failed. Please reload.');console.error(error);});
