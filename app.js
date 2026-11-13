@@ -72,7 +72,7 @@ async function showFrame(){
     $('hour').value=state.index;$('validTime').textContent=formatTime(frame.valid);
     $('period').textContent=['qpf3','rain3'].includes(product)?`3 hours: ${formatTime(frame.intervalStart,true)} → ${formatTime(frame.valid,true)}`:product==='temp'?'Instantaneous model forecast':`Accumulation since ${formatTime(manifest.initialized,true)}`;
     $('forecastHour').textContent=`F${hour} · ${manifest.products[product].label}`;updateLegend();notice('');
-    await refreshBasinAverages();
+    await Promise.all([refreshBasinAverages(),refreshTownValues()]);
     const next=manifest.frames[(state.index+1)%manifest.frames.length], preload=new Image();preload.src=assetPath(`${product}-${String(next.hour).padStart(3,'0')}.png`,manifest);
   }catch(error){if(requestId===state.renderId)notice('This forecast frame could not load. Try Refresh.');console.error(error);throw error;}
   finally{if(requestId===state.renderId)state.busy=false;}
@@ -109,7 +109,7 @@ async function saveMap(){
     ctx.fillStyle='#173f40';ctx.font='bold 23px Arial';ctx.fillText('LA PLATA COUNTY · '+shown.manifest.products[shown.product].label,20,33);
     ctx.font='14px Arial';ctx.fillText(`RRFS 3 km | Init ${formatTime(shown.manifest.initialized)} | Valid ${formatTime(shown.frame.valid)}`,20,60);
     ctx.save();ctx.beginPath();ctx.rect(0,82,canvas.width,box.height*ratio);ctx.clip();ctx.fillStyle='#e4e9dd';ctx.fillRect(0,82,canvas.width,box.height*ratio);
-    for(const paneName of ['tilePane','forecast','watersheds','outline']){
+    for(const paneName of ['tilePane','forecast','watersheds','outline','towns']){
       const pane=map.getPane(paneName);if(!pane)continue;
       for(const el of pane.querySelectorAll('img,canvas')){
         if(el.tagName==='IMG'&&(!el.complete||!el.naturalWidth))continue;
@@ -130,6 +130,17 @@ async function saveMap(){
         ctx.font=`bold ${8*ratio}px Arial`;
         const values=`P ${meanText(entry.values.precip)} / R* ${meanText(entry.values.rain)} in`;
         ctx.strokeText(values,p.x*ratio,y+21*ratio);ctx.fillText(values,p.x*ratio,y+21*ratio);ctx.textAlign='left';
+      }
+    }
+    if($('townPoints').checked){
+      ctx.textAlign='left';ctx.strokeStyle='rgba(255,255,255,.95)';ctx.lineWidth=2.3*ratio;ctx.fillStyle='#173f40';ctx.lineJoin='round';
+      for(const town of towns.entries){
+        const p=map.latLngToContainerPoint(town.latlng),x=(p.x+10)*ratio,y=82+(p.y-5)*ratio;
+        ctx.font=`bold ${9*ratio}px Arial`;ctx.strokeText(town.name,x,y);ctx.fillText(town.name,x,y);
+        if(town.values){
+          ctx.font=`bold ${8*ratio}px Arial`;const label=`P ${meanText(town.values.precip)} / R* ${meanText(town.values.rain)} in`;
+          ctx.strokeText(label,x,y+11*ratio);ctx.fillText(label,x,y+11*ratio);
+        }
       }
     }
     ctx.restore();ctx.globalAlpha=1;
@@ -158,6 +169,7 @@ async function startMap(){
   $('region').onclick=()=>map.fitBounds([[36.70,-108.65],[38.30,-106.80]],{padding:[10,10]});
   map.on('click',event=>pointForecast(event.latlng));
   new ResizeObserver(()=>map.invalidateSize()).observe($('map'));
+  initTowns();
   await initBasins();
   await loadForecast();
   setInterval(()=>{if(!document.hidden&&!state.playing)loadForecast();},300000);setInterval(refreshAge,60000);
@@ -194,13 +206,16 @@ async function initBasins(){
     }
     $('basinOutlines').onchange=()=>{$('basinOutlines').checked?basins.outlines.addTo(map):basins.outlines.remove();};
     $('basinLabels').onchange=()=>{for(const l of [basins.labels,basins.connectors])$('basinLabels').checked?l.addTo(map):l.remove();};
-    $('basinPeriod').onchange=()=>refreshBasinAverages();map.on('moveend resize',layoutBasinLabels);layoutBasinLabels();
+    $('basinPeriod').onchange=()=>Promise.all([refreshBasinAverages(),refreshTownValues()]);map.on('moveend resize',layoutBasinLabels);layoutBasinLabels();
   }catch(error){$('basinStatus').textContent='Watersheds could not load. Forecast map remains available.';console.error(error);}
 }
 function layoutBasinLabels(){
   if(!basins.entries.length)return;
   const size=map.getSize(),width=96,height=26;
   const used=[{x:0,y:size.y-126,w:345,h:126},{x:48,y:0,w:285,h:115}];
+  if($('townPoints').checked)for(const town of towns.entries){
+    const p=map.latLngToContainerPoint(town.latlng);used.push({x:p.x-6,y:p.y-15,w:110,h:30});
+  }
   const overlaps=(a,b)=>a.x<b.x+b.w+5&&a.x+a.w+5>b.x&&a.y<b.y+b.h+5&&a.y+a.h+5>b.y;
   const entries=[...basins.entries].sort((a,b)=>a.anchor[0]-b.anchor[0]);
   for(const entry of entries){
@@ -262,6 +277,42 @@ async function getFrameGrid(manifest,frame){
   const key=`${manifest.cycle}-${frame.hour}`;let grid=state.grids.get(key);
   if(!grid){grid=await readJSON(assetPath(`grid-${String(frame.hour).padStart(3,'0')}.json`,manifest));state.grids.set(key,grid);if(state.grids.size>6)state.grids.delete(state.grids.keys().next().value);}
   return grid;
+}
+
+const towns={layer:null,entries:[],period:null};
+function initTowns(){
+  map.createPane('towns');map.getPane('towns').style.zIndex=430;
+  towns.layer=L.layerGroup().addTo(map);
+  for(const [name,lat,lon] of [['Durango',37.2753,-107.8801],['Bayfield',37.2256,-107.5981],['Ignacio',37.115,-107.633]]){
+    const latlng=L.latLng(lat,lon);
+    const marker=L.circleMarker(latlng,{pane:'towns',radius:3.5,color:'#ffffff',weight:1.2,fillColor:'#173f40',fillOpacity:1,bubblingMouseEvents:false}).addTo(towns.layer);
+    const entry={name,latlng,marker,values:null};towns.entries.push(entry);
+    marker.bindTooltip(escapeHTML(name),{permanent:true,direction:'right',offset:[7,0],className:'town-number-label',interactive:false});
+    marker.bindPopup(()=>townPopup(entry),{maxWidth:310});
+  }
+  $('townPoints').onchange=()=>{$('townPoints').checked?towns.layer.addTo(map):towns.layer.remove();layoutBasinLabels();};
+}
+function townPopup(town){
+  const shown=state.displayed,v=town.values;
+  return `<strong>${escapeHTML(town.name)}</strong><p>${v?`${meanText(v.precip)} in total precipitation / ${meanText(v.rain)} in estimated rain`:'Town values unavailable'}</p><p>${escapeHTML(towns.period||'')} · ${escapeHTML(shown?formatTime(shown.frame.valid):'')}</p><p class="basin-note">Town-center model cell, approximately 3 km; not a municipal area average. Rain is estimated with snow removed; freezing rain or mixed precipitation may remain.</p>`;
+}
+function setTownLabel(town){
+  const v=town.values;town.marker.setTooltipContent(`<strong>${escapeHTML(town.name)}</strong>${v?`<span>P ${meanText(v.precip)} / R* ${meanText(v.rain)} in</span>`:''}`);
+}
+async function refreshTownValues(){
+  const shown=state.displayed;if(!shown||!towns.entries.length)return;
+  const selected=$('basinPeriod').value,interval=selected==='3hr'||selected==='layer'&&['qpf3','rain3'].includes(shown.product);
+  towns.period=interval?'Selected 3 hours':'Since initialization';
+  for(const town of towns.entries){town.values=null;setTownLabel(town);}
+  try{
+    const grid=await getFrameGrid(shown.manifest,shown.frame);
+    if(state.displayed!==shown||selected!==$('basinPeriod').value)return;
+    for(const town of towns.entries){
+      town.values={precip:BasinMath.cellValue(grid[interval?'qpf3':'qpf'],shown.manifest.grid,town.latlng.lng,town.latlng.lat),rain:BasinMath.cellValue(grid[interval?'rain3':'rain'],shown.manifest.grid,town.latlng.lng,town.latlng.lat)};
+      setTownLabel(town);
+    }
+    layoutBasinLabels();
+  }catch(error){console.error('Town values unavailable:',error);}
 }
 
 startMap().catch(error=>{notice('Map initialization failed. Please reload.');console.error(error);});

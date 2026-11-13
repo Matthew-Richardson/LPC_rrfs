@@ -7,10 +7,10 @@
   <title>La Plata County · RRFS Forecast</title>
   <link rel="icon" href="assets/favicon.ico">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="styles.css?v=4">
+  <link rel="stylesheet" href="styles.css?v=5">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
-  <script src="basin-math.js?v=1" defer></script>
-  <script src="app.js?v=4" defer></script>
+  <script src="basin-math.js?v=2" defer></script>
+  <script src="app.js?v=5" defer></script>
 </head>
 <body>
   <header class="masthead">
@@ -33,7 +33,7 @@
         <p id="productDescription" class="explanation">Water equivalent of all precipitation, including snow. Not rainfall only.</p>
         <label class="opacity-label" for="opacity">Map opacity <output id="opacityValue">75%</output></label><input id="opacity" type="range" min="10" max="100" value="75">
       </section>
-      <section class="map-layers"><h2>Map reference</h2><label><input type="checkbox" id="countyOutline" checked><span class="swatch boundary"></span> La Plata County outline</label><label><input type="checkbox" id="terrain" checked><span class="swatch terrain"></span> Topographic basemap</label><p class="fine">Click the map to read the nearest model cell. Use County or Region to change the view.</p><p class="fine">Long-range runs update four times daily. This viewer checks for new data every five minutes.</p></section>
+      <section class="map-layers"><h2>Map reference</h2><label><input type="checkbox" id="countyOutline" checked><span class="swatch boundary"></span> La Plata County outline</label><label><input type="checkbox" id="terrain" checked><span class="swatch terrain"></span> Topographic basemap</label><label><input type="checkbox" id="townPoints" checked><span class="swatch town-swatch"></span> Durango, Bayfield &amp; Ignacio</label><p class="fine">Town dots show town-center model values, not citywide averages. Click a dot for totals and times.</p><p class="fine">Click the map to read the nearest model cell. Use County or Region to change the view.</p><p class="fine">Long-range runs update four times daily. This viewer checks for new data every five minutes.</p></section>
       <section class="basin-panel"><h2>Drainage averages</h2>
       <label><input id="basinOutlines" type="checkbox" checked> Watershed outlines</label>
       <label><input id="basinLabels" type="checkbox" checked> Averages on map</label>
