@@ -70,7 +70,7 @@ async function showFrame(){
     nextLayer.addTo(map);if(forecastLayer)forecastLayer.remove();forecastLayer=nextLayer;
     state.displayed={manifest,product,frame};map.closePopup();
     $('hour').value=state.index;$('validTime').textContent=formatTime(frame.valid);
-    $('period').textContent=product==='qpf3'?`3 hours: ${formatTime(frame.intervalStart,true)} → ${formatTime(frame.valid,true)}`:product==='temp'?'Instantaneous model forecast':`Accumulation since ${formatTime(manifest.initialized,true)}`;
+    $('period').textContent=['qpf3','rain3'].includes(product)?`3 hours: ${formatTime(frame.intervalStart,true)} → ${formatTime(frame.valid,true)}`:product==='temp'?'Instantaneous model forecast':`Accumulation since ${formatTime(manifest.initialized,true)}`;
     $('forecastHour').textContent=`F${hour} · ${manifest.products[product].label}`;updateLegend();notice('');
     const next=manifest.frames[(state.index+1)%manifest.frames.length], preload=new Image();preload.src=assetPath(`${product}-${String(next.hour).padStart(3,'0')}.png`,manifest);
   }catch(error){if(requestId===state.renderId)notice('This forecast frame could not load. Try Refresh.');console.error(error);throw error;}
@@ -120,7 +120,7 @@ async function saveMap(){
     ctx.restore();ctx.globalAlpha=1;
     const y=82+box.height*ratio,spec=shown.manifest.products[shown.product], binWidth=Math.min(55,(canvas.width-40)/spec.colors.length);
     spec.colors.forEach((color,i)=>{ctx.fillStyle=color;ctx.fillRect(20+i*binWidth,y+9,binWidth,12);ctx.fillStyle='#173f40';ctx.font='12px Arial';ctx.fillText(String(spec.levels[i]),20+i*binWidth,y+36);});
-    ctx.font='13px Arial';ctx.fillText(spec.unit+' · '+(shown.product==='temp'?'2 m temperature':shown.product==='qpf3'?'Previous 3 hours':'Since model initialization'),20,y+57);
+    ctx.font='13px Arial';ctx.fillText(spec.unit+' · '+(shown.product==='temp'?'2 m temperature':['qpf3','rain3'].includes(shown.product)?'Previous 3 hours':'Since model initialization'),20,y+57);
     ctx.font='11px Arial';ctx.fillText('NOAA public model guidance, not a warning. Basemap: Esri, USGS and contributors. County boundary: La Plata County GIS.',20,y+77);
     const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));if(!blob)throw new Error('PNG export failed');
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`LPC_RRFS_${shown.manifest.cycle}_${shown.product}_f${String(shown.frame.hour).padStart(3,'0')}.png`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);

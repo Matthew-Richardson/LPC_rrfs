@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="styles.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
-  <script src="app.js" defer></script>
+  <script src="app.js?v=2" defer></script>
 </head>
 <body>
   <header class="masthead">
@@ -22,6 +22,8 @@
       <section class="forecast-controls" aria-labelledby="forecastHeading">
         <h2 id="forecastHeading">Forecast layer</h2>
         <div class="products" role="group" aria-label="Forecast product">
+          <button class="product" data-product="rain" aria-pressed="false"><span>◉</span> Estimated total rain <small>inches · snow removed</small></button>
+          <button class="product" data-product="rain3" aria-pressed="false"><span>◷</span> Estimated 3-hour rain <small>inches · snow removed</small></button>
           <button class="product active" data-product="qpf" aria-pressed="true"><span>◉</span> Total precipitation <small>inches · includes snow water</small></button>
           <button class="product" data-product="qpf3" aria-pressed="false"><span>◷</span> 3-hour precipitation <small>inches · ending at selected time</small></button>
           <button class="product" data-product="snow" aria-pressed="false"><span>❄</span> Accumulated snowfall <small>inches · model new snowfall</small></button>

@@ -45,6 +45,13 @@ PRODUCTS = {
 }
 
 
+for key, label, desc in [
+    ('rain', 'Estimated total rainfall', 'Total precipitation minus model snowfall water equivalent, since initialization. Snow removed; freezing rain or other mixed precipitation may remain.'),
+    ('rain3', 'Estimated three-hour rainfall', 'Three-hour precipitation minus three-hour model snowfall water equivalent. Snow removed; freezing rain or other mixed precipitation may remain.'),
+]:
+    PRODUCTS[key] = {**PRODUCTS['qpf'], 'label': label, 'description': desc}
+
+
 def fetch(url, headers=None):
     """Retry transient failures, but do not conceal a missing model file."""
     for attempt in range(3):
@@ -133,7 +140,8 @@ def decode(message, indices, cycle, hour, cumulative, expected_units):
         # 'unknown' even though NCEP identifies 0/1/29 as Total Snowfall [m].
         # Accept that one explicit parameter, never arbitrary unknown fields.
         asnow = tuple(ec.codes_get(g,k) for k in ('discipline','parameterCategory','parameterNumber')) == (0,1,29)
-        if units not in expected_units and not (units == 'unknown' and asnow and expected_units == {'m'}):
+        snow_water = tuple(ec.codes_get(g,k) for k in ('discipline','parameterCategory','parameterNumber')) == (0,1,50)
+        if units not in expected_units and not (units == 'unknown' and ((asnow and expected_units == {'m'}) or (snow_water and 'kg m**-2' in expected_units))):
             raise ValueError(f'Unexpected field units: {units}')
         date = int(ec.codes_get(g, 'dataDate'))
         clock = int(ec.codes_get(g, 'dataTime'))
@@ -168,11 +176,13 @@ def frame_data(cycle, hour, indices):
     result = {}
     for product, variable, level, units in [
         ('qpf','APCP','surface',{'kg m**-2','kg m-2'}),
+        ('snowwater','TSNOWP','surface',{'kg m**-2','kg m-2'}),
         ('snow','ASNOW','surface',{'m'}),
         ('temp','TMP','2 m above ground',{'K'}),
     ]:
         message = get_message(url, select_record(rows, variable, level, product != 'temp'))
         result[product] = decode(message, indices, cycle, hour, product != 'temp', units)
+    result['rain'] = np.maximum(result['qpf'] - result.pop('snowwater'), 0)/25.4
     result['qpf'] = np.maximum(result['qpf'], 0)/25.4
     result['snow'] = np.maximum(result['snow'], 0)*39.37007874
     result['temp'] = (result['temp']-273.15)*1.8+32
@@ -205,7 +215,7 @@ def run(args):
     current = output/'manifest.json'
     if current.exists() and not args.force:
         old = json.loads(current.read_text())
-        if old.get('cycle') == cycle_id and [f['hour'] for f in old.get('frames',[])] == hours:
+        if old.get('cycle') == cycle_id and [f['hour'] for f in old.get('frames',[])] == hours and 'rain' in old.get('products', {}):
             print(f'Complete cycle {cycle_id} is already published'); return
     print(f'Building RRFS {cycle_id}, {len(hours)} frames', flush=True)
     url = model_url(cycle,hours[0])
@@ -216,6 +226,7 @@ def run(args):
     staging.mkdir(parents=True)
     frames = []
     previous = np.zeros((HEIGHT,WIDTH))
+    previous_rain = np.zeros((HEIGHT,WIDTH))
     try:
         # map preserves chronological order; only two CONUS decoders run at once.
         with ThreadPoolExecutor(max_workers=2) as pool:
@@ -224,6 +235,11 @@ def run(args):
                 if np.min(delta) < -.02:
                     raise ValueError('Cumulative precipitation decreases by >0.02 in; cannot compute intervals')
                 fields['qpf3'] = np.maximum(delta,0)
+                rain_delta = fields['rain'] - previous_rain
+                if np.min(rain_delta) < -.02:
+                    raise ValueError('Snow-removed accumulation decreases; refusing invalid rainfall interval')
+                fields['rain3'] = np.maximum(rain_delta,0)
+                previous_rain = fields['rain']
                 previous = fields['qpf']
                 for product, values in fields.items():
                     Image.fromarray(colorize(values,product)).save(staging/f'{product}-{hour:03d}.png')

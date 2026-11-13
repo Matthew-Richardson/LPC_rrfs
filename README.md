@@ -69,3 +69,7 @@ For a small real-data test: `python scripts/update_rrfs.py --hours 3,6 --output 
 - Product inventory: https://www.nco.ncep.noaa.gov/pmb/products/rrfs/
 
 Only selected GRIB messages are fetched with HTTP byte ranges. Python/ecCodes processes the data; the browser loads small PNG and JSON subsets. No WeatherBELL data, images, or subscriptions are used. NOAA requests attribution; this project does not imply NOAA endorsement.
+
+## Snow-removed rainfall layers
+
+Estimated total rain = max(APCP − TSNOWP, 0), converted from kg/m² to inches. Estimated three-hour rain is the difference between successive snow-removed run totals. The first interval starts at initialization. TSNOWP is snowfall water equivalent, not snowfall depth (ASNOW). Both products use the same shading thresholds and geographic sampling as total precipitation. Freezing rain or other mixed precipitation can remain in this residual; these are estimates with snow removed, not a categorical rain-only or runoff forecast.
