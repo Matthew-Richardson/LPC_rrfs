@@ -46,7 +46,7 @@ PRODUCTS = {
 
 
 for key, label, desc in [
-    ('rain', 'Estimated total rainfall', 'Total precipitation minus model snowfall water equivalent, since initialization. Snow removed; freezing rain or other mixed precipitation may remain.'),
+    ('rain', 'Estimated total rainfall', 'Sum of three-hour precipitation minus three-hour snowfall water equivalent, since initialization. Snow removed; freezing rain or other mixed precipitation may remain.'),
     ('rain3', 'Estimated three-hour rainfall', 'Three-hour precipitation minus three-hour model snowfall water equivalent. Snow removed; freezing rain or other mixed precipitation may remain.'),
 ]:
     PRODUCTS[key] = {**PRODUCTS['qpf'], 'label': label, 'description': desc}
@@ -182,7 +182,7 @@ def frame_data(cycle, hour, indices):
     ]:
         message = get_message(url, select_record(rows, variable, level, product != 'temp'))
         result[product] = decode(message, indices, cycle, hour, product != 'temp', units)
-    result['rain'] = np.maximum(result['qpf'] - result.pop('snowwater'), 0)/25.4
+    result['snowwater'] = np.maximum(result['snowwater'], 0)/25.4
     result['qpf'] = np.maximum(result['qpf'], 0)/25.4
     result['snow'] = np.maximum(result['snow'], 0)*39.37007874
     result['temp'] = (result['temp']-273.15)*1.8+32
@@ -227,6 +227,7 @@ def run(args):
     frames = []
     previous = np.zeros((HEIGHT,WIDTH))
     previous_rain = np.zeros((HEIGHT,WIDTH))
+    previous_snowwater = np.zeros((HEIGHT,WIDTH))
     try:
         # map preserves chronological order; only two CONUS decoders run at once.
         with ThreadPoolExecutor(max_workers=2) as pool:
@@ -235,11 +236,12 @@ def run(args):
                 if np.min(delta) < -.02:
                     raise ValueError('Cumulative precipitation decreases by >0.02 in; cannot compute intervals')
                 fields['qpf3'] = np.maximum(delta,0)
-                rain_delta = fields['rain'] - previous_rain
-                if np.min(rain_delta) < -.02:
-                    raise ValueError('Snow-removed accumulation decreases; refusing invalid rainfall interval')
-                fields['rain3'] = np.maximum(rain_delta,0)
+                snowwater = fields.pop('snowwater')
+                snow_interval = np.maximum(snowwater - previous_snowwater, 0)
+                fields['rain3'] = np.maximum(fields['qpf3'] - snow_interval, 0)
+                fields['rain'] = previous_rain + fields['rain3']
                 previous_rain = fields['rain']
+                previous_snowwater = snowwater
                 previous = fields['qpf']
                 for product, values in fields.items():
                     Image.fromarray(colorize(values,product)).save(staging/f'{product}-{hour:03d}.png')
