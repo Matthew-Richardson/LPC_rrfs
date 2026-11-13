@@ -122,10 +122,14 @@ async function saveMap(){
       ctx.globalAlpha=1;
       for(const entry of basins.entries){
         if(!entry.values)continue;
-        const p=map.latLngToContainerPoint(entry.marker.getLatLng()),x=(p.x-58)*ratio,y=82+(p.y-20)*ratio;
-        ctx.fillStyle='#fffffff2';ctx.fillRect(x,y,116*ratio,40*ratio);ctx.strokeStyle='#334e46';ctx.strokeRect(x,y,116*ratio,40*ratio);
-        ctx.fillStyle='#173f40';ctx.font=`bold ${10*ratio}px Arial`;ctx.textAlign='center';ctx.fillText(entry.feature.properties.shortName||entry.feature.properties.name,p.x*ratio,y+14*ratio);
-        ctx.font=`${9*ratio}px Arial`;ctx.fillText(`P ${meanText(entry.values.precip)} / R* ${meanText(entry.values.rain)} in`,p.x*ratio,y+29*ratio);ctx.textAlign='left';
+        const p=map.latLngToContainerPoint(entry.marker.getLatLng()),y=82+(p.y-13)*ratio;
+        ctx.textAlign='center';ctx.strokeStyle='rgba(255,255,255,0.94)';ctx.lineWidth=2.3*ratio;ctx.lineJoin='round';ctx.fillStyle='#173f40';
+        ctx.font=`bold ${9*ratio}px Arial`;
+        const name=(entry.feature.properties.shortName||entry.feature.properties.name)+(entry.feature.properties.approximate?'*':'');
+        ctx.strokeText(name,p.x*ratio,y+10*ratio);ctx.fillText(name,p.x*ratio,y+10*ratio);
+        ctx.font=`bold ${8*ratio}px Arial`;
+        const values=`P ${meanText(entry.values.precip)} / R* ${meanText(entry.values.rain)} in`;
+        ctx.strokeText(values,p.x*ratio,y+21*ratio);ctx.fillText(values,p.x*ratio,y+21*ratio);ctx.textAlign='left';
       }
     }
     ctx.restore();ctx.globalAlpha=1;
@@ -183,7 +187,7 @@ async function initBasins(){
     for(const feature of geo.features){
       const p=feature.properties,weight=weights.basins.find(b=>b.id===p.id);if(!weight)throw new Error('Missing basin weights');
       const anchor=weight.anchor;
-      const marker=L.marker(anchor,{icon:L.divIcon({className:'basin-marker',html:'',iconSize:[116,40],iconAnchor:[58,20]}),keyboard:true,title:p.name,bubblingMouseEvents:false}).addTo(basins.labels);
+      const marker=L.marker(anchor,{icon:L.divIcon({className:'basin-marker',html:'',iconSize:[96,26],iconAnchor:[48,13]}),keyboard:true,title:p.name,bubblingMouseEvents:false}).addTo(basins.labels);
       const connector=L.polyline([anchor,anchor],{pane:'watersheds',color:'#354d46',weight:1.3,opacity:.8,interactive:false}).addTo(basins.connectors);
       const entry={feature,weight,marker,connector,anchor,values:null};basins.entries.push(entry);
       marker.on('click',()=>basinPopup(entry));
@@ -195,7 +199,7 @@ async function initBasins(){
 }
 function layoutBasinLabels(){
   if(!basins.entries.length)return;
-  const size=map.getSize(),width=116,height=40;
+  const size=map.getSize(),width=96,height=26;
   const used=[{x:0,y:size.y-126,w:345,h:126},{x:48,y:0,w:285,h:115}];
   const overlaps=(a,b)=>a.x<b.x+b.w+5&&a.x+a.w+5>b.x&&a.y<b.y+b.h+5&&a.y+a.h+5>b.y;
   const entries=[...basins.entries].sort((a,b)=>a.anchor[0]-b.anchor[0]);
@@ -252,7 +256,7 @@ async function refreshBasinAverages(){
 }
 function setBasinLabel(entry){
   const v=entry.values,p=entry.feature.properties;
-  entry.marker.setIcon(L.divIcon({className:'basin-marker',iconSize:[116,40],iconAnchor:[58,20],html:`<div class="basin-number-label"><strong>${escapeHTML(p.shortName||p.name)}${p.approximate?'*':''}</strong><span>P ${v?meanText(v.precip):'—'} / R* ${v?meanText(v.rain):'—'} in</span></div>`}));
+  entry.marker.setIcon(L.divIcon({className:'basin-marker',iconSize:[96,26],iconAnchor:[48,13],html:`<div class="basin-number-label"><strong>${escapeHTML(p.shortName||p.name)}${p.approximate?'*':''}</strong><span>P ${v?meanText(v.precip):'—'} / R* ${v?meanText(v.rain):'—'} in</span></div>`}));
 }
 async function getFrameGrid(manifest,frame){
   const key=`${manifest.cycle}-${frame.hour}`;let grid=state.grids.get(key);
