@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="La Plata County RRFS forecast maps with a county outline.">
+  <meta name="theme-color" content="#123f40">
+  <title>La Plata County · RRFS Forecast</title>
+  <link rel="icon" href="assets/favicon.ico">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="masthead">
+    <a class="identity" href="https://readylaplata.org" target="_blank" rel="noopener"><img src="assets/logo.png" alt="La Plata County"><span><strong>LA PLATA COUNTY</strong><small>WEATHER & SITUATIONAL AWARENESS</small></span></a>
+    <nav><span class="model-tag">NOAA RRFS <b>3 km</b></span><a href="https://gis.lpcgov.org/readylpc/" target="_blank" rel="noopener">ReadyLaPlata ↗</a></nav>
+  </header>
+  <main>
+    <aside class="sidebar">
+      <div class="intro"><div class="eyebrow">THE SAN JUANS / FOUR CORNERS</div><h1>A closer look<br>at the forecast.</h1><p>Model guidance for La Plata County and the surrounding mountains.</p></div>
+      <section class="forecast-controls" aria-labelledby="forecastHeading">
+        <h2 id="forecastHeading">Forecast layer</h2>
+        <div class="products" role="group" aria-label="Forecast product">
+          <button class="product active" data-product="qpf" aria-pressed="true"><span>◉</span> Total precipitation <small>inches · includes snow water</small></button>
+          <button class="product" data-product="qpf3" aria-pressed="false"><span>◷</span> 3-hour precipitation <small>inches · ending at selected time</small></button>
+          <button class="product" data-product="snow" aria-pressed="false"><span>❄</span> Accumulated snowfall <small>inches · model new snowfall</small></button>
+          <button class="product" data-product="temp" aria-pressed="false"><span>°</span> Air temperature <small>°F · 2 meters above ground</small></button>
+        </div>
+        <p id="productDescription" class="explanation">Water equivalent of all precipitation, including snow. Not rainfall only.</p>
+        <label class="opacity-label" for="opacity">Map opacity <output id="opacityValue">75%</output></label><input id="opacity" type="range" min="10" max="100" value="75">
+      </section>
+      <section class="map-layers"><h2>Map reference</h2><label><input type="checkbox" id="countyOutline" checked><span class="swatch boundary"></span> La Plata County outline</label><label><input type="checkbox" id="terrain" checked><span class="swatch terrain"></span> Topographic basemap</label><p class="fine">Click the map to read the nearest model cell. Use County or Region to change the view.</p><p class="fine">Long-range runs update four times daily. This viewer checks for new data every five minutes.</p></section>
+      <footer class="sidebar-footer"><strong>Forecast guidance, not a warning.</strong><p>Follow official instructions and <a href="https://www.weather.gov/gjt/" target="_blank" rel="noopener">NWS Grand Junction</a>. Forecast cells represent approximately 3 km, not individual properties.</p><a href="https://github.com/Matthew-Richardson/LPC_rrfs" target="_blank" rel="noopener">Data sources & project ↗</a></footer>
+    </aside>
+    <section class="workspace" aria-label="Forecast map and timeline">
+      <div class="runbar"><div><span class="eyebrow">MODEL INITIALIZATION</span><strong id="runTime">Loading forecast…</strong></div><div class="run-actions"><span id="freshness" class="freshness">Checking data</span><button id="refresh" title="Check for updated forecast">↻ <span>Refresh</span></button><button id="download" disabled>↓ <span>Save map</span></button></div></div>
+      <div class="map-shell">
+        <div id="map" aria-label="Interactive La Plata County map"></div>
+        <div id="mapNotice" class="map-notice" role="status">Loading county map…</div>
+        <div class="map-tools"><button id="home">⌂ County</button><button id="region">↗ Region</button></div>
+        <div class="map-caption"><span class="eyebrow">FORECAST VALID</span><strong id="validTime">—</strong><small id="period">—</small></div>
+        <div class="legend"><div><strong id="legendTitle">Total precipitation</strong><span id="legendUnit">inches</span></div><div id="legendRamp" class="legend-ramp"></div><div id="legendTicks" class="legend-ticks"></div><small id="legendNote">Transparent areas: less than 0.01 in</small></div>
+      </div>
+      <div class="timeline"><button id="play" disabled aria-label="Play forecast animation">▶</button><div class="time-track"><div class="time-heading"><strong id="forecastHour">Forecast time</strong><span id="rangeEnd">Through 84 hours</span></div><input id="hour" aria-label="Forecast time" type="range" min="0" max="27" step="1" value="27" disabled><div id="timeTicks" class="time-ticks"></div></div><div class="step-buttons"><button id="previous" disabled aria-label="Previous forecast time">‹</button><button id="next" disabled aria-label="Next forecast time">›</button></div></div>
+      <div class="source-line"><span>NOAA operational RRFS · Public data · Times in Mountain Time</span><span id="generated">Updated automatically</span></div>
+    </section>
+  </main>
+  <noscript>This forecast viewer requires JavaScript. See <a href="https://www.weather.gov/gjt/">NWS Grand Junction</a> for forecasts.</noscript>
+</body>
+</html>

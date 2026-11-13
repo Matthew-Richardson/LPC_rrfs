@@ -1,0 +1,72 @@
+name: Update RRFS and publish map
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '35 * * * *'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: rrfs-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install forecast decoder
+        run: python -m pip install -r requirements.txt
+      - name: Verify data processing
+        run: python -m unittest discover -s tests -v
+      - name: Restore last complete forecast
+        uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: rrfs-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: rrfs-v1-
+      - name: Download latest complete 84-hour cycle
+        run: python scripts/update_rrfs.py
+      - name: Save complete forecast
+        uses: actions/cache/save@v4
+        with:
+          path: data
+          key: rrfs-v1-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Assemble static website
+        run: |
+          mkdir -p _site
+          cp index.html styles.css app.js _site/
+          cp -r assets data _site/
+          touch _site/.nojekyll
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LPC-RRFS-static-site
+          path: _site/
+          retention-days: 7
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy map
+        id: deployment
+        uses: actions/deploy-pages@v4
